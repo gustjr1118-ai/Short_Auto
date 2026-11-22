@@ -1,0 +1,75 @@
+{
+  "name": "shorts-studio-bysom",
+  "productName": "Shorts Studio bySom",
+  "version": "0.5.0",
+  "private": true,
+  "description": "원본을 살리는 프리셋 쇼츠 제작 스튜디오",
+  "author": "bySom",
+  "main": "electron/main.cjs",
+  "scripts": {
+    "build": "tsc --noEmit && vite build",
+    "start": "node scripts/start.cjs",
+    "test": "node --test tests/*.test.cjs",
+    "test:render": "node scripts/render-smoke.cjs",
+    "test:structure": "node scripts/render-structure-smoke.cjs",
+    "test:v03": "node scripts/v03-smoke.cjs",
+    "dist": "node scripts/package.cjs dir",
+    "dist:release": "node scripts/package.cjs 7z",
+    "dist:zip": "node scripts/package.cjs zip",
+    "setup:tools": "node scripts/setup-tools.cjs && node scripts/setup-whisper.cjs"
+  },
+  "dependencies": {
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "sql.js": "^1.13.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "electron": "45.4.1",
+    "electron-builder": "26.18.0",
+    "fflate": "^0.8.2",
+    "typescript": "^5.9.3",
+    "vite": "8.3.4"
+  },
+  "build": {
+    "appId": "com.bysom.shortsstudio",
+    "productName": "Shorts Studio bySom",
+    "asar": true,
+    "electronDist": "node_modules/electron/dist",
+    "electronLanguages": ["ko", "en-US"],
+    "files": [
+      "dist/**/*",
+      "electron/**/*",
+      "assets/icon.*",
+      "README.md",
+      "THIRD_PARTY_NOTICES.md",
+      "package.json",
+      "!node_modules/{react,react-dom,scheduler}/**/*",
+      "!node_modules/sql.js/dist/!(sql-wasm.js|sql-wasm.wasm)"
+    ],
+    "extraResources": [
+      {
+        "from": "assets/tools",
+        "to": "tools"
+      }
+    ],
+    "directories": {
+      "output": "release"
+    },
+    "artifactName": "Shorts-Studio-${version}-win-x64.${ext}",
+    "win": {
+      "icon": "assets/icon.ico",
+      "target": [
+        {
+          "target": "7z",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "npmRebuild": false
+  }
+}

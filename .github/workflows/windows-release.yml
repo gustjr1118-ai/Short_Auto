@@ -1,0 +1,71 @@
+name: Windows release
+
+on:
+  push:
+    branches: [main]
+    paths: [package.json]
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: windows-2025
+    timeout-minutes: 30
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          cache: npm
+      - name: Check release version
+        id: version
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $version = node -p "require('./package.json').version"
+          $tag = "v$version"
+          if ($env:GITHUB_REF_TYPE -eq 'tag' -and $env:GITHUB_REF_NAME -ne $tag) {
+            throw 'The Git tag must match package.json.'
+          }
+          if ($env:GITHUB_REF_TYPE -eq 'branch' -and $env:GITHUB_REF_NAME -ne 'main') {
+            throw 'Run a manual release from main.'
+          }
+          "SHORTS_VERSION=$version" >> $env:GITHUB_ENV
+          "SHORTS_TAG=$tag" >> $env:GITHUB_ENV
+          gh release view $tag --json tagName *> $null
+          $published = $LASTEXITCODE -eq 0
+          "published=$($published.ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
+          exit 0
+      - if: steps.version.outputs.published == 'false'
+        run: npm ci
+      - if: steps.version.outputs.published == 'false'
+        run: npm test
+      - if: steps.version.outputs.published == 'false'
+        run: npm run dist:release
+      - name: Publish Windows archive and checksum
+        if: steps.version.outputs.published == 'false'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $version = $env:SHORTS_VERSION
+          $archive = "release/$version-optimized/Shorts-Studio-$version-win-x64.7z"
+          $tag = $env:SHORTS_TAG
+          $notes = "docs/release-$tag.md"
+          $releaseArgs = @('release', 'create', $tag, '--title', "Shorts Studio $tag", '--target', $env:GITHUB_SHA)
+          if ($env:GITHUB_REF_TYPE -eq 'tag') { $releaseArgs += '--verify-tag' }
+          if (Test-Path -LiteralPath $notes) { $releaseArgs += @('--notes-file', $notes) }
+          else { $releaseArgs += '--generate-notes' }
+          gh @releaseArgs $archive "$archive.sha256"
