@@ -1,0 +1,17 @@
+node_modules/
+dist/
+release/
+.test-data/
+.smoke-data/
+app-data/
+*.log
+.dev-tools/
+assets/tools/*.exe
+assets/tools/whisper/
+.ui-test/
+.ui-test-output/
+.env
+.env.*
+!.env.example
+*.sqlite
+*.sqlite-*
