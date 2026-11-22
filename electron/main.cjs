@@ -122,7 +122,20 @@ function installHandlers() {
     finally { translations.delete(id); }
   });
   handle('cancel-output-translation', ({ id }) => { translations.get(id)?.abort(); });
-  handle('choose-bgm', async ({ id }) => { assertIdle(id); const result = await dialog.showOpenDialog(win, { filters: [{ name: '배경음악', extensions: ['mp3', 'wav', 'm4a', 'aac'] }], properties: ['openFile'] }); if (result.canceled) return null; return editProject(id, p => { p.edit.audio.bgmPath = result.filePaths[0]; }); });
+  const chooseMusicFile = async () => {
+    const result = await dialog.showOpenDialog(win, { filters: [{ name: '배경음악', extensions: ['mp3', 'wav', 'm4a', 'aac'] }], properties: ['openFile'] });
+    return result.canceled ? null : result.filePaths[0];
+  };
+  handle('choose-bgm', async ({ id }) => {
+    assertIdle(id);
+    const bgmPath = await chooseMusicFile();
+    return bgmPath ? editProject(id, p => { p.edit.audio.bgmPath = bgmPath; }) : null;
+  });
+  handle('choose-clip-bgm', async ({ id, clipId }) => {
+    assertIdle(id);
+    batchClip(store.project(id), clipId);
+    return chooseMusicFile();
+  });
   handle('codex-account', () => codexStatus.account());
   handle('codex-activity', () => codexStatus.activity());
   handle('save-clip-edit', ({ id, clipId, edit, presetId }) => updateBatch(id, p => {

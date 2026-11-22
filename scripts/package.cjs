@@ -13,7 +13,9 @@ if (['ffmpeg.exe', 'ffprobe.exe', 'yt-dlp.exe'].some(name => !fs.existsSync(path
 execute(['scripts/setup-whisper.cjs']);
 execute(['node_modules/typescript/bin/tsc', '--noEmit']);
 execute(['node_modules/vite/bin/vite.js', 'build']);
-execute(['node_modules/electron-builder/out/cli/cli.js', '--win', target, '--x64', '--publish', 'never', `--config.directories.output=${output}`]);
+const electronDist = 'node_modules/electron/dist';
+const localElectron = fs.existsSync(path.join(root, electronDist, 'electron.exe')) ? [`--config.electronDist=${electronDist}`] : [];
+execute(['node_modules/electron-builder/out/cli/cli.js', '--win', target, '--x64', '--publish', 'never', `--config.directories.output=${output}`, ...localElectron]);
 
 async function writeChecksum() {
   const name = `Shorts-Studio-${version}-win-x64.${target}`;

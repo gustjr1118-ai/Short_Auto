@@ -5,6 +5,9 @@ import type { EditPreviewHandle } from './EditPreview';
 import { SourceMaskEditor } from './SourceMaskEditor';
 import { TextDialog } from './TextDialog';
 import { Icon } from './Icon';
+import { AudioFields } from './AudioFields';
+
+export type ClipEditorTab = 'range' | 'captions' | 'frame' | 'title' | 'audio';
 
 export function draftOf(project: Project, clip: BatchClip): Edit {
   if (clip.edit) return clip.edit;
@@ -15,14 +18,15 @@ export function draftOf(project: Project, clip: BatchClip): Edit {
     overlays: base.overlays.filter(o => o.start < clip.end - clip.start).map(o => ({ ...o, end: Math.min(o.end, clip.end - clip.start) })) };
 }
 
-export function ClipEditor({ project, clip, presets, onUpdate, onPresets, onClose, report }: {
-  project: Project; clip: BatchClip; presets: Preset[]; onUpdate: (p: Project) => void; onPresets: (p: Preset[]) => void;
+export function ClipEditor({ project, clip, clipNumber, initialTab, presets, onUpdate, onPresets, onClose, report }: {
+  project: Project; clip: BatchClip; clipNumber: number; initialTab: ClipEditorTab;
+  presets: Preset[]; onUpdate: (p: Project) => void; onPresets: (p: Preset[]) => void;
   onClose: () => void; report: (e: unknown) => void;
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
   const player = useRef<EditPreviewHandle>(null);
   const [draft, setDraft] = useState(() => draftOf(project, clip));
-  const [tab, setTab] = useState<'range' | 'captions' | 'frame' | 'title'>('range');
+  const [tab, setTab] = useState(initialTab);
   const [dirty, setDirty] = useState(false);
   const [pending, setPending] = useState(false);
   const [confirmClose, setConfirmClose] = useState(false);
@@ -93,11 +97,11 @@ export function ClipEditor({ project, clip, presets, onUpdate, onPresets, onClos
     setAppliedPreset(preset.id);
     setStatus('프리셋을 적용했습니다.');
   };
-  const commands = [['range','구간'],['captions','자막'],['frame','화면'],['title','제목']] as const;
+  const commands = [['range','구간'],['frame','화면'],['title','제목'],['captions','자막'],['audio','소리']] as const;
 
   return <dialog ref={dialog} className="modal output-caption-dialog clip-editor-dialog" aria-labelledby="clip-editor-title" onCancel={e => { e.preventDefault(); close(); }}>
     <header className="modal-head">
-      <div><h2 id="clip-editor-title">쇼츠 개별 편집</h2><p className="hint">{clip.title} · 원본 {time(draft.start)}–{time(draft.end)} · {length.toFixed(1)}초</p></div>
+      <div><h2 id="clip-editor-title">{clipNumber}번 쇼츠 개별 편집</h2><p className="hint">{clip.title} · 원본 {time(draft.start)}–{time(draft.end)} · {length.toFixed(1)}초</p></div>
       <button className="icon-btn" aria-label="쇼츠 편집 닫기" disabled={pending} onClick={close}><Icon name="close"/></button>
     </header>
     <div className="clip-editor-grid">
@@ -168,6 +172,11 @@ export function ClipEditor({ project, clip, presets, onUpdate, onPresets, onClos
             <label>글자 크기 {draft.title.size}px<input type="range" min="28" max="120" value={draft.title.size} onChange={e=>change({title:{...draft.title,size:+e.target.value}})}/></label>
             <label>상단 여백 {draft.title.position}%<input type="range" min="5" max="85" value={draft.title.position} onChange={e=>change({title:{...draft.title,position:+e.target.value}})}/></label>
           </> : null}
+          {tab === 'audio' ? <AudioFields audio={draft.audio} onChange={audio => change({ audio })}
+            onChooseBgm={() => perform(async () => {
+              const bgmPath = await unwrap(window.studio.chooseClipBgm(project.id, clip.id));
+              if (bgmPath) change({ audio: { ...draft.audio, bgmPath } });
+            })}/> : null}
         </fieldset>
         <details className="clip-advanced"><summary>프리셋·Codex 요청</summary>
           <fieldset className="form-stack" disabled={isBusy}>
@@ -212,7 +221,7 @@ export function ClipEditor({ project, clip, presets, onUpdate, onPresets, onClos
           setCopyPreview('');setWatchPreview(true);
           onUpdate(await unwrap(window.studio.run(project.id,{action:'clip-preview',clipId:clip.id})));
         })}>합성 미리보기 만들기</button>}
-      <button className="btn primary" disabled={isBusy} onClick={()=>perform(async()=>{await save();onClose();})}>편집 저장 및 구간 확정</button>
+      <button className="btn primary" disabled={isBusy} onClick={()=>perform(async()=>{await save();onClose();})}>{clipNumber}번 편집 저장</button>
     </footer>
     {namePreset ? <div className="clip-preset-dialog"><TextDialog heading="스타일 프리셋으로 저장" initial={clip.title + ' 스타일'}
       onClose={()=>setNamePreset(false)} onSave={async name=>{

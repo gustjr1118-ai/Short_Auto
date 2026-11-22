@@ -1,7 +1,7 @@
 {
   "name": "shorts-studio-bysom",
   "productName": "Shorts Studio bySom",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "private": true,
   "description": "원본을 살리는 프리셋 쇼츠 제작 스튜디오",
   "author": "bySom",
@@ -37,7 +37,6 @@
     "appId": "com.bysom.shortsstudio",
     "productName": "Shorts Studio bySom",
     "asar": true,
-    "electronDist": "node_modules/electron/dist",
     "electronLanguages": ["ko", "en-US"],
     "files": [
       "dist/**/*",

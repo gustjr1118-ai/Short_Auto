@@ -13,7 +13,9 @@ import { OutputCaptionEditor } from './OutputCaptionEditor';
 import { EditPreview } from './EditPreview';
 import type { EditPreviewHandle } from './EditPreview';
 import { Results } from './Results';
+import { AudioFields } from './AudioFields';
 import { ClipEditor, draftOf } from './ClipEditor';
+import type { ClipEditorTab } from './ClipEditor';
 
 const layouts = [['crop', '세로 크롭'], ['fit', '전체 맞춤'], ['blur', '흐린 배경']] as const;
 const panels = [['range', '구간', 'clock'], ['style', '화면·제목', 'crop'], ['captions', '자막', 'text'], ['audio', '소리', 'sound']] as const;
@@ -33,12 +35,12 @@ export function Workspace({ ref, project: p, presets, settings, update, openProj
   const [panel, setPanel] = useState<Panel>('range');
   const [styleTab, setStyleTab] = useState<Style>('layout');
   const [view, setView] = useState<'edit' | 'results'>('edit');
-  const [playback, setPlayback] = useState<'source' | 'selection'>('source');
+  const [playback, setPlayback] = useState<'source' | 'selection'>(p.batch?.clips.length ? 'selection' : 'source');
   const [mode, setMode] = useState<'single' | 'batch'>(p.batch ? 'batch' : 'single');
   const [batch, setBatch] = useState<BatchControls>({ length: p.batch?.length || 30, count: p.batch?.count || 3 });
   const [picks, setPicks] = useState<{ id: string; excluded: string[] } | null>(null);
-  const [editingClipId, setEditingClipId] = useState('');
-  const [batchPreviewId, setBatchPreviewId] = useState('');
+  const [editingClip, setEditingClip] = useState<{ id: string; tab: ClipEditorTab } | null>(null);
+  const [activeClipId, setActiveClipId] = useState('');
   const [resultId, setResultId] = useState(p.outputs.at(-1)?.id || '');
   const [captionOutputId, setCaptionOutputId] = useState('');
   const [showRequest, setShowRequest] = useState(false);
@@ -51,7 +53,7 @@ export function Workspace({ ref, project: p, presets, settings, update, openProj
   const [textDialog, setTextDialog] = useState<'rename' | 'preset' | null>(null);
   const [leaveAction, setLeaveAction] = useState<(() => void) | null>(null);
   const preview = useRef<EditPreviewHandle>(null);
-  const pendingSeek = useRef<{ time: number; index: number } | null>(null);
+  const [previewRequest, setPreviewRequest] = useState<{ time: number; index: number; play: boolean } | null>(null);
   const settledJob = useRef(p.job?.state === 'completed' || p.job?.state === 'needs_input' ? p.job.id : '');
   const busyNow = busy(p);
   const isBusy = busyNow || pending;
@@ -61,7 +63,7 @@ export function Workspace({ ref, project: p, presets, settings, update, openProj
   const captionOutputIndex = captionGroup?.versions.findIndex(item => item.id === captionOutputId) ?? -1;
   const captionOutput = captionGroup?.versions[captionOutputIndex];
   const tab = panel === 'style' ? styleTab : panel;
-  const setTab = (tab: 'range' | 'structure') => { setMode('single'); setBatchPreviewId(''); setPanel('range'); if (tab === 'structure') requestAnimationFrame(() => document.getElementById('connected-ranges')?.scrollIntoView({ block: 'nearest' })); };
+  const setTab = (tab: 'range' | 'structure') => { setMode('single'); setPanel('range'); if (tab === 'structure') requestAnimationFrame(() => document.getElementById('connected-ranges')?.scrollIntoView({ block: 'nearest' })); };
 
   useEffect(() => {
     if (dirty) return;
@@ -85,15 +87,16 @@ export function Workspace({ ref, project: p, presets, settings, update, openProj
 
   const currentPicks = picks && picks.id === p.batch?.id ? picks : null;
   const clips = p.batch?.clips || [];
-  const editingClip = clips.find(clip => clip.id === editingClipId);
+  const clipInEditor = clips.find(clip => clip.id === editingClip?.id);
   const selection = clips.filter(clip => (!clip.outputId || clip.needsRender) && !currentPicks?.excluded.includes(clip.id)).map(clip => clip.id);
   const needsConfirmation = !!p.batch?.reviewRequired && clips.some(clip => selection.includes(clip.id) && !clip.confirmed);
   const batchReady = !!p.batch && p.batch.length === batch.length && p.batch.count === batch.count;
   const needsSelection = mode === 'batch' && batchReady && !selection.length && clips.some(clip => !clip.outputId || clip.needsRender);
-  const batchPreview = mode === 'batch' ? clips.find(clip => clip.id === batchPreviewId) : undefined;
-  const batchStart = batchPreview?.start || 0;
+  const activeClip = mode === 'batch' ? clips.find(clip => clip.id === activeClipId) || clips[0] : undefined;
+  const activeClipNumber = activeClip ? clips.indexOf(activeClip) + 1 : 0;
+  const batchPreview = playback === 'selection' ? activeClip : undefined;
   const previewEdit = batchPreview ? draftOf(p, batchPreview) : draft;
-  const previewPlayback = batchPreview ? 'selection' : playback;
+  const previewPlayback = mode === 'batch' && !activeClip ? 'source' : playback;
   const sourceLength = p.source.duration || 1800;
   const segments = segmentsOf(draft);
   const activeIndex = Math.min(segmentIndex, segments.length - 1);
@@ -103,10 +106,12 @@ export function Workspace({ ref, project: p, presets, settings, update, openProj
   const outputNeedsUpdate = !!persistedSingle && (dirty || persistedSingle.revision !== p.revision);
 
   useEffect(() => {
-    if (batchPreview || view !== 'edit' || !pendingSeek.current) return;
-    preview.current?.seek(pendingSeek.current.time, pendingSeek.current.index);
-    pendingSeek.current = null;
-  }, [batchPreview?.id, view]);
+    if (!previewRequest || view !== 'edit' || !preview.current) return;
+    const { time, index, play } = previewRequest;
+    if (play) preview.current.playFrom(time, index);
+    else preview.current.seek(time, index);
+    setPreviewRequest(null);
+  }, [previewRequest, view]);
 
   const change = (patch: Partial<Edit>) => {
     setDraft(current => ({ ...current, ...patch }));
@@ -153,9 +158,10 @@ export function Workspace({ ref, project: p, presets, settings, update, openProj
       return;
     }
     const clipNumber = /(?:^|\D)(\d{1,2})\s*번\s*(?:쇼츠|영상)/.exec(request);
-    const clip = clipNumber && clips[Number(clipNumber[1]) - 1];
-    if (clip) {
-      setMode('batch'); setPanel('range'); setEditingClipId(clip.id); setShowRequest(false);
+    const clip = clipNumber ? clips[Number(clipNumber[1]) - 1] : activeClip;
+    if (clipNumber || mode === 'batch') {
+      if (!clip) { report(new Error('편집할 쇼츠 후보를 선택해 주세요.')); return; }
+      setMode('batch'); setPanel('range'); openClipEditor(clip); setShowRequest(false);
       await execute({ action: 'clip-ai', clipId: clip.id, request });
       setRequest('');
       return;
@@ -174,25 +180,22 @@ export function Workspace({ ref, project: p, presets, settings, update, openProj
     else {
       setView('edit');
       if (p.batch) { setMode('batch'); setPanel('range'); }
-      if (clip) setEditingClipId(clip.id);
+      if (clip) openClipEditor(clip);
     }
   }, [workTarget?.stamp, p.id]);
   const openSingleResult = (id: string) => beforeLeave(async () => {
     try { openProject(await unwrap(window.studio.openOutputProject(p.id, id))); } catch (error) { report(error); }
   });
-  const seek = (seconds: number, index = 0) => {
-    if (batchPreview) { pendingSeek.current = { time: seconds, index }; setBatchPreviewId(''); }
-    else preview.current?.seek(seconds, index);
-  };
+  const seek = (seconds: number, index = 0) => preview.current?.seek(seconds, index);
   const showSource = () => {
     preview.current?.pause();
-    if (batchPreview) seek(batchStart);
     setPlayback('source');
+    setPreviewRequest({ time: playTime, index: 0, play: false });
   };
   const showSelection = (start = inRange ? playTime : activeSegment.start, index = activeIndex) => {
     preview.current?.pause();
     setPlayback('selection');
-    seek(start, index);
+    setPreviewRequest({ time: start, index, play: false });
   };
   const addSample = async () => {
     const index = segments.findIndex(s => playTime >= s.start && playTime < s.end - .1);
@@ -215,9 +218,15 @@ export function Workspace({ ref, project: p, presets, settings, update, openProj
     const excluded = currentPicks?.excluded || [];
     setPicks({ id: p.batch.id, excluded: excluded.includes(id) ? excluded.filter(item => item !== id) : [...excluded, id] });
   };
-  const previewClip = (clip: BatchClip) => {
-    if (batchPreviewId === clip.id) preview.current?.seek(clip.start, 0);
-    setBatchPreviewId(clip.id);
+  const previewClip = (clip: BatchClip, play = false) => {
+    preview.current?.pause();
+    setActiveClipId(clip.id);
+    setPlayback('selection');
+    setPreviewRequest({ time: clip.start, index: 0, play });
+  };
+  const openClipEditor = (clip: BatchClip, tab: ClipEditorTab = 'range') => {
+    previewClip(clip);
+    setEditingClip({ id: clip.id, tab });
   };
   const batchAnalysis = () => execute({ action: 'batch-analyze', ...batch });
   const makeBatch = () => {
@@ -226,14 +235,14 @@ export function Workspace({ ref, project: p, presets, settings, update, openProj
     return execute({ action: 'batch-render', clipIds: selection });
   };
   const addClip = () => act(async () => {
-    const next = await unwrap(window.studio.addManualClip(p.id, batchPreview ? batchStart : playTime, batch.length, batch.count));
-    setEditingClipId(next.batch!.clips.at(-1)!.id);
+    const next = await unwrap(window.studio.addManualClip(p.id, playTime, batch.length, batch.count));
+    openClipEditor(next.batch!.clips.at(-1)!);
     return next;
   });
   const swapBatch = () => act(async () => {
     const next = await unwrap(window.studio.swapBatch(p.id));
     if (next.batch) setBatch({ length: next.batch.length, count: next.batch.count });
-    setBatchPreviewId('');
+    setActiveClipId('');
     return next;
   });
   const makeSingle = () => execute({ action: 'render', auto: auto && !draft.segments.length, review: !autoSingle });
@@ -250,8 +259,9 @@ export function Workspace({ ref, project: p, presets, settings, update, openProj
   const prepareSource = () => execute({ action: 'prepare' });
 
   return <div className="workspace redesigned-workspace">
-    {editingClip ? <ClipEditor key={editingClip.id} project={p} clip={editingClip} presets={presets} onUpdate={update} onPresets={onPresets}
-      onClose={() => setEditingClipId('')} report={report}/> : null}
+    {clipInEditor && editingClip ? <ClipEditor key={`${clipInEditor.id}:${editingClip.tab}`} project={p} clip={clipInEditor}
+      clipNumber={clips.indexOf(clipInEditor) + 1} initialTab={editingClip.tab} presets={presets} onUpdate={update} onPresets={onPresets}
+      onClose={() => setEditingClip(null)} report={report}/> : null}
     {captionOutput ? <OutputCaptionEditor key={captionOutput.id} projectId={p.id} output={captionOutput}
       source={p.source} version={captionOutputIndex + 1} onClose={() => setCaptionOutputId('')}
       onStarted={project => { update(project); setCaptionOutputId(''); }} report={report}/> : null}
@@ -264,8 +274,10 @@ export function Workspace({ ref, project: p, presets, settings, update, openProj
       </nav>
       <div className="redesign-project-actions">
         <div className="project-state" aria-live="polite">
-          <span className={dirty ? 'unsaved' : ''}>{dirty ? '저장할 변경 있음' : '편집 저장됨'}</span>
-          {outputNeedsUpdate ? <small>편집 변경 · 최신 MP4에 미반영</small> : null}
+          {mode === 'batch' ? activeClip ? <span>{activeClipNumber}번 쇼츠 · {activeClip.confirmed ? '편집 구간 확정' : '구간 검토 전'}</span> : null : <>
+            <span className={dirty ? 'unsaved' : ''}>{dirty ? '저장할 변경 있음' : '편집 저장됨'}</span>
+            {outputNeedsUpdate ? <small>편집 변경 · 최신 MP4에 미반영</small> : null}
+          </>}
         </div>
         <button className="icon-btn" title="프로젝트 복제" aria-label="프로젝트 복제" disabled={isBusy}
           onClick={() => act(() => unwrap(window.studio.duplicate(p.id)))}><Icon name="copy" size={16}/></button>
@@ -280,15 +292,17 @@ export function Workspace({ ref, project: p, presets, settings, update, openProj
     {view === 'edit' ? <div className="redesign-control-bar">
       <div className="segmented production-mode" role="group" aria-label="제작 방식">
         <button aria-pressed={mode === 'single'} className={mode === 'single' ? 'active' : ''} disabled={isBusy}
-          onClick={() => { setMode('single'); setBatchPreviewId(''); setPanel('range'); }}>한 편</button>
+          onClick={() => { setMode('single'); setPlayback('source'); setPanel('range'); }}>한 편</button>
         <button aria-pressed={mode === 'batch'} className={mode === 'batch' ? 'active' : ''} disabled={isBusy}
-          onClick={() => { setMode('batch'); setPanel('range'); }}>여러 편</button>
+          onClick={() => { setMode('batch'); setPanel('range'); if (clips.length) previewClip(clips.find(clip => clip.id === activeClipId) || clips[0]); }}>여러 편</button>
       </div>
-      <label className="preset-picker">프리셋<select disabled={isBusy} value={p.preset.id}
+      {activeClip ? <button className="btn small batch-preset-button" disabled={isBusy} onClick={() => openClipEditor(activeClip, 'frame')}
+        title={`${activeClipNumber}번 쇼츠 프리셋`}>{activeClipNumber}번 프리셋 · {activeClip.presetName || p.preset.name}</button> :
+      <label className="preset-picker">{mode === 'batch' ? '후보 기본 프리셋' : '프리셋'}<select disabled={isBusy} value={p.preset.id}
         onChange={e => { const value = e.currentTarget.value; act(() => unwrap(window.studio.applyPreset(p.id, value))); }}>
         {!presets.some(item => item.id === p.preset.id) ? <option value={p.preset.id}>{p.preset.name}</option> : null}
         {presets.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
-      </select></label>
+      </select></label>}
       <div className="source-inline" title={p.source.name}><Icon name={p.source.kind === 'url' ? 'link' : 'film'} size={16}/>
         <span>{p.source.name}</span>{p.source.duration ? <small>{time(p.source.duration)}</small> : <small>원본 준비 전</small>}</div>
       <button className="btn small" aria-expanded={showRequest} onClick={() => setShowRequest(open => !open)}><Icon name="spark" size={14}/>AI 편집 요청</button>
@@ -313,52 +327,72 @@ export function Workspace({ ref, project: p, presets, settings, update, openProj
       <div className="redesign-edit-grid">
         <main className="redesign-stage">
           <div className="stage-head">
-            <div><h2>{batchPreview ? '추천 구간 미리보기' : '미리보기'}</h2>
-              <p>{batchPreview ? batchPreview.title : p.source.duration ? `원본 ${time(p.source.duration)} · 선택 구간 ${Math.max(0, durationOf(draft)).toFixed(1)}초` : '원본을 준비하는 중입니다.'}</p></div>
+            <div><h2>{batchPreview ? `${activeClipNumber}번 쇼츠 미리보기` : previewPlayback === 'source' ? '원본 미리보기' : '미리보기'}</h2>
+              <p>{batchPreview ? `원본 ${time(batchPreview.start)}–${time(batchPreview.end)} · ${(batchPreview.end - batchPreview.start).toFixed(1)}초` : p.source.duration ?
+                `원본 ${time(p.source.duration)}${mode === 'single' ? ` · 선택 구간 ${Math.max(0, durationOf(draft)).toFixed(1)}초` : ''}` : '원본을 준비하는 중입니다.'}</p></div>
             <div className="segmented preview-playback-mode" role="group" aria-label="미리보기 범위">
               <button type="button" className={previewPlayback === 'source' ? 'active' : ''} aria-pressed={previewPlayback === 'source'}
                 onClick={showSource}>원본 전체</button>
               <button type="button" className={previewPlayback === 'selection' ? 'active' : ''} aria-pressed={previewPlayback === 'selection'}
-                onClick={() => { if (!batchPreview) showSelection(); }}>선택 구간</button>
+                disabled={mode === 'batch' && !activeClip} onClick={() => activeClip ? previewClip(activeClip) : showSelection()}>{mode === 'batch' ? '선택한 쇼츠' : '선택 구간'}</button>
             </div>
           </div>
           <div className="stage-canvas">
-            <EditPreview key={batchPreview ? `${batchPreview.id}-${batchStart}` : 'draft'} ref={preview} edit={previewEdit} source={p.source} playback={previewPlayback} report={report}
-              onPosition={batchPreview ? undefined : (seconds, index) => { setPlayTime(seconds); setSegmentIndex(index); }}/>
+            <EditPreview key={batchPreview ? `${batchPreview.id}-${batchPreview.start}-${batchPreview.end}` : 'draft'} ref={preview} edit={previewEdit} source={p.source} playback={previewPlayback} report={report}
+              onPosition={(seconds, index) => { setPlayTime(seconds); setSegmentIndex(index); }}/>
             {!p.source.path && !isBusy ? <button className="btn stage-prepare" onClick={prepareSource}>원본 준비</button> : null}
           </div>
           <section className="source-timeline" aria-label="원본 구간과 재생 순서">
-            <div className="row-between"><strong>원본 전체 구간</strong><small>{p.source.duration ? `총 ${time(p.source.duration)}` : '준비 전'}</small></div>
+            <div className="row-between"><strong>원본 전체 구간</strong><small>{p.source.duration ? `${mode === 'batch' ? `현재 ${time(playTime)} · ` : ''}총 ${time(p.source.duration)}` : '준비 전'}</small></div>
             <div className="source-timeline-track" aria-hidden="true">
-              {segmentsOf(previewEdit).map((segment, index) => <span key={segment.id} className={index === (batchPreview ? 0 : activeIndex) ? 'current' : ''} style={{
+              {(mode === 'batch' ? clips : segments).map((segment, index) => <span key={segment.id} className={(mode === 'batch' ? segment.id === activeClip?.id : index === activeIndex) ? 'current' : ''} style={{
                 left: `${Math.max(0, segment.start / sourceLength * 100)}%`,
                 width: `${Math.max(0, (segment.end - segment.start) / sourceLength * 100)}%`,
               }}/>)}
-              {!batchPreview && p.source.duration ? <i style={{ left: `${Math.min(100, playTime / sourceLength * 100)}%` }}/> : null}
+              {p.source.duration ? <i style={{ left: `${Math.min(100, playTime / sourceLength * 100)}%` }}/> : null}
             </div>
             <div className="segment-actions">
-              {segmentsOf(previewEdit).map((segment, index) => <button className="segment-jump" key={segment.id}
-                aria-pressed={index === (batchPreview ? 0 : activeIndex)} disabled={!p.source.mediaUrl}
-                onClick={() => batchPreview ? preview.current?.seek(segment.start, index) : showSelection(segment.start, index)}>
-                {segment.label || (draft.segments.length && !batchPreview ? `${index + 1}번 구간` : '선택 구간')} <small>{time(segment.start)}–{time(segment.end)}</small>
+              {mode === 'batch' ? clips.map((clip, index) => <button className="segment-jump" key={clip.id}
+                aria-pressed={clip.id === activeClip?.id} disabled={!p.source.mediaUrl} onClick={() => previewClip(clip)}>
+                {index + 1}번 쇼츠 <small>{time(clip.start)}–{time(clip.end)}</small>
+              </button>) : segments.map((segment, index) => <button className="segment-jump" key={segment.id}
+                aria-pressed={index === activeIndex} disabled={!p.source.mediaUrl} onClick={() => showSelection(segment.start, index)}>
+                {segment.label || (draft.segments.length ? `${index + 1}번 구간` : '선택 구간')} <small>{time(segment.start)}–{time(segment.end)}</small>
               </button>)}
             </div>
           </section>
         </main>
 
         <aside className="redesign-inspector" aria-label="편집 설정">
+          {mode === 'batch' && activeClip ? <div className="batch-edit-target">
+            <label htmlFor="batch-edit-target">편집 대상</label>
+            <select id="batch-edit-target" value={activeClip.id} onChange={e => {
+              const clip = clips.find(item => item.id === e.currentTarget.value);
+              if (clip) previewClip(clip);
+            }}>
+              {clips.map((clip, index) => <option key={clip.id} value={clip.id}>{index + 1}번 · {clip.title}</option>)}
+            </select>
+          </div> : null}
           <div className="inspector-tabs" role="group" aria-label="편집 항목">
             {panels.map(([id, label, icon]) => <button aria-pressed={panel === id} key={id}
-              className={panel === id ? 'active' : ''} onClick={() => {
+              className={panel === id ? 'active' : ''} disabled={mode === 'batch' && id !== 'range' && (!activeClip || isBusy)} onClick={() => {
                 setPanel(id);
-                if (id !== 'range' && playback === 'source' && !batchPreview) showSelection();
+                if (mode === 'batch') {
+                  if (id !== 'range' && activeClip) openClipEditor(activeClip, id === 'style' ? 'title' : id);
+                } else if (id !== 'range' && playback === 'source') showSelection();
               }}><Icon name={icon} size={15}/>{label}</button>)}
           </div>
           <div className="inspector-scroll">
             {panel === 'range' && mode === 'batch' ? <BatchEditor project={p} controls={batch} onControls={setBatch} selection={selection}
-              onSelect={pickClip} onPreview={previewClip} onView={viewResult} onEdit={setEditingClipId} onRetry={id => execute({ action: 'batch-render', clipIds: [id] })}
+              activeClipId={activeClip?.id} onSelect={pickClip} onPreview={clip => previewClip(clip, true)} onView={viewResult}
+              onEdit={clip => openClipEditor(clip)} onRetry={id => execute({ action: 'batch-render', clipIds: [id] })}
               onAdd={addClip} onCompare={swapBatch} onRemove={id => act(() => unwrap(window.studio.removeClip(p.id, id)))} onSettings={openSettings} busy={isBusy}/> : null}
-            <fieldset disabled={isBusy} className="form-stack redesign-fields" hidden={panel === 'range' && mode === 'batch'}>
+            {panel !== 'range' && mode === 'batch' && activeClip ? <section className="batch-edit-summary">
+              <h3>{activeClipNumber}번 쇼츠</h3><p>{activeClip.title}</p>
+              <small>원본 {time(activeClip.start)}–{time(activeClip.end)}</small>
+              <button className="btn small" disabled={isBusy} onClick={() => openClipEditor(activeClip, panel === 'style' ? 'title' : panel)}>이 편 {panels.find(([id]) => id === panel)?.[1]} 편집</button>
+            </section> : null}
+            {mode === 'single' ? <fieldset disabled={isBusy} className="form-stack redesign-fields">
               {panel === 'range' && mode === 'single' ? <>
                 <div className="segmented" role="group" aria-label="구간 선정 방식">
                   <button type="button" aria-pressed={!auto || !!draft.segments.length} className={!auto || draft.segments.length ? 'active' : ''} onClick={() => setAuto(false)}>직접 선택</button>
@@ -406,21 +440,21 @@ export function Workspace({ ref, project: p, presets, settings, update, openProj
               {tab === 'layout' && draft.segments.length ? <><h3>구간별 화면 구성</h3><p className="hint">연결된 각 구간의 화면과 크롭 위치를 구간 탭의 연결 구간에서 조정하세요.</p><button className="btn" onClick={() => setTab('structure')}>구간별 화면 설정 열기</button></> : null}
               {tab === 'layout' && !draft.segments.length ? <><h3>9:16 화면 구성</h3><div className="layout-options">{layouts.map(([value, name]) => <button key={value} className={draft.layout === value ? 'selected' : ''} onClick={() => change({ layout: value })}><span className={`layout-icon layout-icon-${value}`}/>{name}</button>)}</div>{draft.layout === 'crop' ? <><label>가로 중심 {Math.round(draft.cropX)}%<input type="range" min="0" max="100" value={draft.cropX} onChange={e => change({ cropX: +e.target.value })}/></label><label>세로 중심 {Math.round(draft.cropY)}%<input type="range" min="0" max="100" value={draft.cropY} onChange={e => change({ cropY: +e.target.value })}/></label></> : null}<p className="hint">세로 크롭은 화면 일부를 확대합니다. 원본 전체를 보이게 하려면 전체 맞춤 또는 흐린 배경을 선택하세요.</p></> : null}
               {tab === 'layout' ? <SourceMaskEditor mask={draft.sourceMask} duration={sourceLength} thumbnail={p.source.thumbnailUrl} onChange={sourceMask => change({ sourceMask })}/> : null}
-              {tab === 'audio' ? <><h3>원본 음성과 배경음악</h3><label>자막 AI 음성<select value={draft.audio.narrationMode} onChange={e => change({ audio: { ...draft.audio, narrationMode: e.target.value as Edit['audio']['narrationMode'] } })}><option value="off">끄기 · 원음 유지</option><option value="mix">원음과 혼합</option><option value="replace">원음 음소거 · AI 음성</option></select></label>{draft.audio.narrationMode !== 'off' ? <><label>AI 음색<select value={draft.audio.narrationVoice} onChange={e => change({ audio: { ...draft.audio, narrationVoice: e.target.value } })}><option value="Sohee">Sohee · 한국어</option><option value="Vivian">Vivian</option><option value="Ryan">Ryan</option></select></label><p className="hint">예시 자막을 제외한 대사를 읽습니다. 자막 반영 후 다시 제작하면 음성이 적용됩니다.</p></> : null}<label>원음 {Math.round(draft.audio.volume * 100)}%<input type="range" min="0" max="2" step="0.01" value={draft.audio.volume} onChange={e => change({ audio: { ...draft.audio, volume: +e.target.value } })}/></label><label>BGM 파일<button className="btn file-picker" onClick={() => act(() => unwrap(window.studio.chooseBgm(p.id)))}><Icon name="folder" size={14}/><span>{draft.audio.bgmPath.split(/[\\/]/).at(-1) || '음악 파일 선택'}</span></button></label>{draft.audio.bgmPath ? <button className="link-button" onClick={() => change({ audio: { ...draft.audio, bgmPath: '' } })}>배경음악 제거</button> : null}<label>BGM {Math.round(draft.audio.bgmVolume * 100)}%<input type="range" min="0" max="1" step="0.01" value={draft.audio.bgmVolume} onChange={e => change({ audio: { ...draft.audio, bgmVolume: +e.target.value } })}/></label><label>페이드 시간 {draft.audio.fade}초<input type="range" min="0" max="5" step="0.1" value={draft.audio.fade} onChange={e => change({ audio: { ...draft.audio, fade: +e.target.value } })}/></label><p className="hint">원본 재생 속도는 유지됩니다. BGM은 선택한 영상 길이에 맞춰 반복됩니다.</p></> : null}
-            </fieldset>
+              {tab === 'audio' ? <AudioFields audio={draft.audio} onChange={audio => change({ audio })}
+                onChooseBgm={() => act(() => unwrap(window.studio.chooseBgm(p.id)))}/> : null}
+            </fieldset> : null}
           </div>
-          <div className="inspector-foot">
+          {mode === 'single' ? <div className="inspector-foot">
             <button className="icon-btn" disabled={isBusy || (!dirty && !p.undo.length)} title="변경 되돌리기" aria-label="변경 되돌리기" onClick={() => {
               if (dirty) { setDraft(p.edit); setDirty(false); }
               else void act(() => unwrap(window.studio.undo(p.id)));
             }}><Icon name="undo" size={16}/></button>
             <button className="btn small" disabled={isBusy} onClick={() => setTextDialog('preset')}>프리셋으로 저장</button>
             <button className="btn small" disabled={isBusy || !dirty} onClick={() => act(async () => null)}>편집 저장</button>
-            {panel === 'range' && mode === 'batch' && p.batch ? <button className="link-button" disabled={isBusy} onClick={batchAnalysis}>다시 추천</button> : null}
-          </div>
+          </div> : panel === 'range' && p.batch ? <div className="inspector-foot"><button className="link-button" disabled={isBusy} onClick={batchAnalysis}>다시 추천</button></div> : null}
         </aside>
         {showRequest ? <section className="request-drawer" aria-label="AI 편집 요청">
-          <div className="row-between"><h2>AI 편집 요청</h2><button className="icon-btn" aria-label="AI 편집 요청 닫기" onClick={() => setShowRequest(false)}><Icon name="close"/></button></div>
+          <div className="row-between"><h2>{activeClip ? `${activeClipNumber}번 쇼츠 · AI 편집 요청` : 'AI 편집 요청'}</h2><button className="icon-btn" aria-label="AI 편집 요청 닫기" onClick={() => setShowRequest(false)}><Icon name="close"/></button></div>
           <div className="request-history">
             {p.messages.length ? p.messages.map((message, index) => <div className={`message message-${message.role}`} key={`${message.at}-${index}`}>
               <div>{message.text}</div></div>) : <p className="hint">제목, 자막 크기, 화면 자르기 등을 문장으로 요청할 수 있습니다.</p>}

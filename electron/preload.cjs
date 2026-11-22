@@ -36,6 +36,7 @@ contextBridge.exposeInMainWorld('studio', {
   translateOutputSrt: (id, outputId, items) => invoke('translate-output-srt', { id, outputId, items }),
   cancelOutputTranslation: id => invoke('cancel-output-translation', { id }),
   chooseBgm: id => invoke('choose-bgm', { id }),
+  chooseClipBgm: (id, clipId) => invoke('choose-clip-bgm', { id, clipId }),
   run: (id, options) => invoke('run', { id, options }),
   openOutputProject: (id, outputId) => invoke('open-output-project', { id, outputId }),
   cancel: id => invoke('cancel', { id }),

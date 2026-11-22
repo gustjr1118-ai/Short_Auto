@@ -7,6 +7,7 @@ import { Icon } from './Icon';
 export interface EditPreviewHandle {
   seek: (time: number, index: number) => void;
   seekOutput: (time: number) => void;
+  playFrom: (time: number, index: number) => void;
   pause: () => void;
 }
 
@@ -26,6 +27,7 @@ export function EditPreview({ ref, edit, source, playback = 'selection', caption
   const [playing, setPlaying] = useState(false);
   const player = useRef<HTMLVideoElement>(null);
   const pendingSeek = useRef<typeof position | null>(null);
+  const pendingPlay = useRef(false);
   const index = Math.min(position.index, segments.length - 1);
   const segment = segments[index];
   const inRange = position.time >= segment.start && position.time < segment.end;
@@ -42,10 +44,19 @@ export function EditPreview({ ref, edit, source, playback = 'selection', caption
     setPosition(current => current.time === time && current.index === nextIndex ? current : { time, index: nextIndex });
     onPosition?.(time, nextIndex);
   };
-  const seek = (time: number, nextIndex: number) => {
-    if (player.current && player.current.readyState > 0) {
+  const resumeAfterSeek = (video: HTMLVideoElement) => {
+    if (!pendingPlay.current || video.seeking || video.readyState === 0) return;
+    pendingPlay.current = false;
+    video.play().catch(error => { if (error.name !== 'AbortError') report(error); });
+  };
+  const seek = (time: number, nextIndex: number, play = false) => {
+    const video = player.current;
+    pendingPlay.current = play;
+    if (play) video?.pause();
+    if (video && video.readyState > 0) {
       pendingSeek.current = null;
-      player.current.currentTime = time;
+      video.currentTime = time;
+      resumeAfterSeek(video);
     } else pendingSeek.current = { time, index: nextIndex };
     updatePosition(time, nextIndex);
   };
@@ -53,7 +64,8 @@ export function EditPreview({ ref, edit, source, playback = 'selection', caption
     const next = outputPosition(edit, seconds);
     seek(next.time, next.index);
   };
-  useImperativeHandle(ref, () => ({ seek, seekOutput, pause: () => player.current?.pause() }));
+  const pause = () => { pendingPlay.current = false; player.current?.pause(); };
+  useImperativeHandle(ref, () => ({ seek, seekOutput, playFrom: (time, index) => seek(time, index, true), pause }));
 
   const onVideoTime = (video: HTMLVideoElement) => {
     const now = video.currentTime;
@@ -75,11 +87,19 @@ export function EditPreview({ ref, edit, source, playback = 'selection', caption
         {source.thumbnailUrl ? <div className="preview-background" style={{ backgroundImage: `url("${source.thumbnailUrl}")` }}/> : null}
         <video ref={player} aria-label="편집 영상 미리보기" src={source.mediaUrl} poster={source.thumbnailUrl || undefined} playsInline preload="metadata"
           style={!fullSource && segment.layout === 'crop' ? { objectPosition: `${segment.cropX}% ${segment.cropY}%` } : {}}
-          onLoadedMetadata={e => { const target = pendingSeek.current || { time: segment.start, index }; pendingSeek.current = null; e.currentTarget.currentTime = target.time; updatePosition(target.time, target.index); }}
+          onLoadedMetadata={() => {
+            const target = pendingSeek.current || { time: fullSource ? 0 : segment.start, index };
+            seek(target.time, target.index, pendingPlay.current);
+          }}
+          onSeeked={e => resumeAfterSeek(e.currentTarget)}
           onPause={() => setPlaying(false)}
           onEnded={() => setPlaying(false)}
           onPlay={e => {
-            if (!fullSource && !inRange) seek(segment.start, index);
+            const actualTime = e.currentTarget.currentTime;
+            if (!fullSource && (actualTime < segment.start - .04 || actualTime >= segment.end)) {
+              seek(segment.start, index, true);
+              return;
+            }
             e.currentTarget.volume = fullSource ? 1 : Math.min(1, edit.audio.volume);
             setPlaying(true);
           }}
@@ -105,7 +125,18 @@ export function EditPreview({ ref, edit, source, playback = 'selection', caption
     </div>
     <div className="preview-controls">
       <button aria-label={playing ? '미리보기 일시정지' : '미리보기 재생'} disabled={!source.mediaUrl || duration <= 0}
-        onClick={() => { if (playing) player.current?.pause(); else player.current?.play().catch(report); }}>
+        onClick={() => {
+          if (playing || pendingPlay.current) { pause(); return; }
+          const video = player.current;
+          if (!video) return;
+          const current = video.currentTime;
+          if (video.readyState === 0 || (!fullSource && (current < segment.start || current >= segment.end - .05))) {
+            seek(pendingSeek.current?.time ?? (fullSource ? current : segment.start), index, true);
+          } else {
+            pendingPlay.current = true;
+            resumeAfterSeek(video);
+          }
+        }}>
         <Icon name={playing ? 'stop' : 'play'} size={15}/>
       </button>
       <input aria-label={fullSource ? '원본 전체 재생 위치' : '편집 미리보기 재생 위치'} type="range"

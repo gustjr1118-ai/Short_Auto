@@ -63,6 +63,7 @@ export interface StudioApi {
   translateOutputSrt(id: string, outputId: string, items: Caption[]): Promise<Result<Caption[]>>;
   cancelOutputTranslation(id: string): Promise<Result<void>>;
   chooseBgm(id: string): Promise<Result<Project | null>>;
+  chooseClipBgm(id: string, clipId: string): Promise<Result<string | null>>;
   run(id: string, options: RunOptions): Promise<Result<Project>>;
   openOutputProject(id: string, outputId: string): Promise<Result<Project>>;
   cancel(id: string): Promise<Result<Project>>;

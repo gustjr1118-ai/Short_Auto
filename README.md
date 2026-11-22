@@ -1,4 +1,4 @@
-# Shorts Studio bySom · 0.5.0
+# Shorts Studio bySom · 0.5.1
 
 유튜브 링크 또는 로컬 영상을 프리셋에 맞춰 쇼츠로 편집하는 Windows Electron 앱입니다. 원본 장면·원음을 유지하며 제목·자막·크롭·배경음악을 합성합니다. YouTube Finder의 다크 UI를 기준으로 제작했습니다.
 
@@ -6,13 +6,13 @@
 
 [GitHub Releases](https://github.com/gustjr1118-ai/Short_Auto/releases)에서 Windows x64용 `.7z` 파일을 받아 전체 압축을 풉니다. 기존 앱을 닫은 뒤 압축을 푼 폴더의 `Shorts Studio bySom.exe`를 실행합니다. 배포본에는 Electron·FFmpeg·FFprobe·yt-dlp·Whisper가 포함되어 기본 편집과 전사를 Node.js·Python 설치 없이 실행할 수 있습니다. 기존 설정·프로젝트는 같은 저장 위치에서 이어서 사용합니다.
 
-소스 폴더에서 만든 배포본은 `Start.cmd`로 실행할 수 있습니다. Windows에서 Node.js 24로 `npm ci`, `npm test`, `npm run dist:release`를 실행하면 `release/0.5.0-optimized/`에 `.7z`와 SHA-256 파일이 만들어집니다. ZIP이 필요한 경우 `npm run dist:zip`을 사용합니다. `main`에 새 `package.json` 버전을 푸시하거나 대응하는 `v` 태그를 푸시하면 GitHub Actions가 Windows 릴리스를 생성합니다.
+소스 폴더에서 만든 배포본은 `Start.cmd`로 실행할 수 있습니다. Windows에서 Node.js 24로 `npm ci`, `npm test`, `npm run dist:release`를 실행하면 `release/0.5.1-optimized/`에 `.7z`와 SHA-256 파일이 만들어집니다. ZIP이 필요한 경우 `npm run dist:zip`을 사용합니다. `main`에 새 `package.json` 버전을 푸시하거나 대응하는 `v` 태그를 푸시하면 GitHub Actions가 Windows 릴리스를 생성합니다.
 
 ## 0.5 작업 흐름
 
 - 왼쪽 하단 **작업 현황**에서 현재 단계, 대기 순서, 진행 기록, 결과와 재시도를 확인합니다.
 - 오른쪽 상단 **Codex** 버튼으로 계정 잔여량과 이 앱의 최근 30분 토큰 사용량을 봅니다. 한도 기간과 초기화 시각은 계정 조회값을 사용합니다.
-- **여러 편 → 하이라이트 추천**은 원본에서 추출한 대표 장면과 확보된 대사를 사용합니다. 후보에서 시작·종료를 고르고 구간을 확정한 뒤 각 편을 편집합니다.
+- **여러 편 → 하이라이트 추천**은 원본에서 추출한 대표 장면과 확보된 대사를 사용합니다. **이 구간 보기**를 누르면 해당 후보의 원본 시작 지점부터 종료 지점까지 재생합니다. 오른쪽 **편집 대상**에서 활성 쇼츠를 바꾸면 화면·제목, 자막, 소리 탭이 해당 편의 설정을 엽니다.
 - **개별 편집**에서 자막 추출·가져오기·번역, 원본 자막 가리기, 화면, 제목을 설정합니다. 저장한 스타일 프리셋을 불러오거나 선택한 편에 Codex 요청을 보낼 수 있습니다. **선택한 N편 제작**을 눌러 확정한 편을 출력합니다.
 
 ## 0.4 사용 방법

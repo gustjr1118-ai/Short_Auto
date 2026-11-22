@@ -63,7 +63,7 @@ async function readAccount(settings, cwd) {
         finish({ state: windows.length ? 'connected' : 'unavailable', windows });
       }
     });
-    send(1, 'initialize', { clientInfo: { name: 'shorts_studio', version: '0.5.0' }, capabilities: {} });
+    send(1, 'initialize', { clientInfo: { name: 'shorts_studio', version: require('../package.json').version }, capabilities: {} });
   });
 }
 

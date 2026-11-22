@@ -25,6 +25,12 @@
 .compact-tray .work-tray-body{position:absolute;left:43px;bottom:0;width:225px;z-index:15;background:#17171c;border:1px solid #454550;border-radius:7px;padding:6px}
 .batch-review-actions{margin:8px 0;gap:8px}.batch-clip-evidence{display:flex;gap:8px;align-items:flex-start}.batch-clip-evidence img{width:86px;aspect-ratio:16/9;object-fit:cover;border-radius:4px;margin-top:3px}.batch-clip-evidence>div{min-width:0}
 .batch-previous{padding:7px 0;font-size:11px}.batch-previous p,.batch-previous button{margin-top:5px}
+.redesign-batch-clip.active-clip{border-color:#9c5264;background:#2a1c25}.redesign-batch-clip .chip{white-space:nowrap}
+.batch-edit-target{display:grid;gap:6px;padding:10px 12px;background:#241b23;border-bottom:1px solid #60414d;min-width:0}
+.batch-edit-target label{font-size:11px;font-weight:650;color:#f0b7c8}.batch-edit-target select{width:100%;min-width:0;text-overflow:ellipsis;font-size:11px}
+.batch-edit-summary{display:grid;gap:7px;padding:12px;background:#262029;border:1px solid #513643;border-radius:6px;font-size:11px;overflow-wrap:anywhere}
+.batch-edit-summary h3{font-size:12px}.batch-edit-summary small{color:#baa8b3}.batch-edit-summary button{justify-self:start}
+.batch-preset-button{max-width:190px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;display:block}
 .clip-editor-dialog{width:min(950px,calc(100vw - 48px));height:min(690px,calc(100vh - 55px))}
 .clip-editor-dialog .modal-head,.clip-editor-dialog .modal-foot{flex:none;padding-block:14px}
 .clip-editor-grid{display:grid;grid-template-columns:minmax(250px,37%) minmax(0,1fr);flex:1;min-height:0}

@@ -6,10 +6,10 @@ export interface BatchControls {
   count: number;
 }
 
-export function BatchEditor({ project, controls, onControls, selection, onSelect, onPreview, onView, onEdit, onRetry, onSettings, onAdd, onRemove, onCompare, busy }: {
-  project: Project; controls: BatchControls; onControls: (v: BatchControls) => void; selection: string[];
+export function BatchEditor({ project, controls, onControls, selection, activeClipId, onSelect, onPreview, onView, onEdit, onRetry, onSettings, onAdd, onRemove, onCompare, busy }: {
+  project: Project; controls: BatchControls; onControls: (v: BatchControls) => void; selection: string[]; activeClipId?: string;
   onSelect: (id: string) => void; onPreview: (clip: BatchClip) => void; onView: (id: string) => void;
-  onEdit: (id: string) => void; onRetry: (id: string) => void; onSettings: () => void;
+  onEdit: (clip: BatchClip) => void; onRetry: (id: string) => void; onSettings: () => void;
   onAdd: () => void; onRemove: (id: string) => void; onCompare: () => void; busy: boolean;
 }) {
   const { batch, source } = project;
@@ -40,12 +40,13 @@ export function BatchEditor({ project, controls, onControls, selection, onSelect
         const needsWork = !clip.outputId || clip.needsRender;
         const status = clip.status === 'running' ? '제작 중' : clip.status === 'failed' ? '실패' : clip.status === 'interrupted' ? '중단됨'
           : clip.needsRender ? '수정 적용 전' : clip.outputId ? '완료' : clip.confirmed ? '편집 가능' : '검토 전';
-        return <article className="batch-clip redesign-batch-clip" key={clip.id}>
+        const active = clip.id === activeClipId;
+        return <article className={`batch-clip redesign-batch-clip${active ? ' active-clip' : ''}`} aria-current={active ? 'true' : undefined} key={clip.id}>
           <div className="row-between">
             {needsWork ? <label className="check-label">
               <input type="checkbox" disabled={busy} checked={selection.includes(clip.id)} onChange={() => onSelect(clip.id)}/>{index + 1}. {clip.title}
             </label> : <strong>{index + 1}. {clip.title}</strong>}
-            <span className={clip.status === 'failed' ? 'warn-text' : 'chip'}>{status}</span>
+            <span className={clip.status === 'failed' ? 'warn-text' : 'chip'}>{active ? `선택됨 · ${status}` : status}</span>
           </div>
           <div className="batch-clip-evidence">
             {clip.thumbnailUrl ? <img src={clip.thumbnailUrl} alt="추천 장면" loading="lazy"/> : null}
@@ -56,8 +57,8 @@ export function BatchEditor({ project, controls, onControls, selection, onSelect
           </div>
           {clip.error ? <p className="warn-text">{clip.error}</p> : null}
           <div className="inline-actions">
-            <button className="btn small" disabled={!source.mediaUrl} onClick={() => onPreview(clip)}><Icon name="play" size={14}/>이 구간 보기</button>
-            <button className="btn small" disabled={busy} onClick={() => onEdit(clip.id)}>{clip.confirmed || clip.outputId ? '개별 편집' : '구간 조정'}</button>
+            <button type="button" className="btn small" disabled={!source.mediaUrl} onClick={() => onPreview(clip)}><Icon name="play" size={14}/>이 구간 보기</button>
+            <button type="button" className="btn small" disabled={busy} onClick={() => onEdit(clip)}>{clip.confirmed || clip.outputId ? '개별 편집' : '구간 조정'}</button>
             {clip.outputId ? <button className="btn small" onClick={() => onView(clip.outputId!)}>결과 보기</button> : null}
             {needsWork && ['failed', 'interrupted'].includes(clip.status || '') ?
               <button className="btn small" disabled={busy} onClick={() => onRetry(clip.id)}>이 편 다시 시도</button> : null}
