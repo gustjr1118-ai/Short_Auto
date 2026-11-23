@@ -1,6 +1,10 @@
 @echo off
 setlocal
 cd /d "%~dp0"
+if exist "release\0.5.2-optimized\win-unpacked\Shorts Studio bySom.exe" (
+  start "" "release\0.5.2-optimized\win-unpacked\Shorts Studio bySom.exe"
+  exit /b 0
+)
 if exist "release\0.5.1-optimized\win-unpacked\Shorts Studio bySom.exe" (
   start "" "release\0.5.1-optimized\win-unpacked\Shorts Studio bySom.exe"
   exit /b 0

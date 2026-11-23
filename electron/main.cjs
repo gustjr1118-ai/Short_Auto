@@ -7,6 +7,7 @@ const { Store } = require('./store.cjs');
 const { Jobs } = require('./jobs.cjs');
 const { fail, clone, contained, bounded, makeProject, normalizeEdit, normalizePreset, parseSrt, youtubeUrl, withSampleCaption } = require('./domain.cjs');
 const { importSource, toolPath } = require('./media.cjs');
+const { serveMediaFile } = require('./media-protocol.cjs');
 const { detectCli, CODEX_EFFORTS, MODEL_ID } = require('./ai.cjs');
 const { batchOptions, batchClip, clipEdit, saveClipDraft } = require('./batch.cjs');
 const { CodexStatus } = require('./codex-status.cjs');
@@ -295,8 +296,7 @@ function installProtocols() {
       const candidate = kind === 'candidate' ? p.batch : kind === 'previous-candidate' ? p.previousBatch : null;
       const preview = p.job?.clipPreview;
       const file = candidate ? candidate.clips.find(clip => clip.id === outputId)?.thumbnail : kind === 'source' ? p.source?.path : kind === 'thumbnail' ? p.source?.thumbnail : kind === 'output' ? p.outputs.find(o => o.id === outputId)?.path : kind === 'preview' && preview?.id === outputId ? preview?.path : null;
-      if (!file || !fs.existsSync(file)) return new Response('', { status: 404 });
-      return net.fetch(pathToFileURL(file).href, { headers: request.headers });
+      return file ? serveMediaFile(file, request) : new Response(null, { status: 404 });
     } catch { return new Response('', { status: 404 }); }
   });
 }

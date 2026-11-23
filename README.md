@@ -1,4 +1,4 @@
-# Shorts Studio bySom · 0.5.1
+# Shorts Studio bySom · 0.5.2
 
 유튜브 링크 또는 로컬 영상을 프리셋에 맞춰 쇼츠로 편집하는 Windows Electron 앱입니다. 원본 장면·원음을 유지하며 제목·자막·크롭·배경음악을 합성합니다. YouTube Finder의 다크 UI를 기준으로 제작했습니다.
 
@@ -6,7 +6,7 @@
 
 [GitHub Releases](https://github.com/gustjr1118-ai/Short_Auto/releases)에서 Windows x64용 `.7z` 파일을 받아 전체 압축을 풉니다. 기존 앱을 닫은 뒤 압축을 푼 폴더의 `Shorts Studio bySom.exe`를 실행합니다. 배포본에는 Electron·FFmpeg·FFprobe·yt-dlp·Whisper가 포함되어 기본 편집과 전사를 Node.js·Python 설치 없이 실행할 수 있습니다. 기존 설정·프로젝트는 같은 저장 위치에서 이어서 사용합니다.
 
-소스 폴더에서 만든 배포본은 `Start.cmd`로 실행할 수 있습니다. Windows에서 Node.js 24로 `npm ci`, `npm test`, `npm run dist:release`를 실행하면 `release/0.5.1-optimized/`에 `.7z`와 SHA-256 파일이 만들어집니다. ZIP이 필요한 경우 `npm run dist:zip`을 사용합니다. `main`에 새 `package.json` 버전을 푸시하거나 대응하는 `v` 태그를 푸시하면 GitHub Actions가 Windows 릴리스를 생성합니다.
+소스 폴더에서 만든 배포본은 `Start.cmd`로 실행할 수 있습니다. Windows에서 Node.js 24로 `npm ci`, `npm test`, `npm run dist:release`를 실행하면 `release/0.5.2-optimized/`에 `.7z`와 SHA-256 파일이 만들어집니다. ZIP이 필요한 경우 `npm run dist:zip`을 사용합니다. `main`에 새 `package.json` 버전을 푸시하거나 대응하는 `v` 태그를 푸시하면 GitHub Actions가 Windows 릴리스를 생성합니다.
 
 ## 0.5 작업 흐름
 
